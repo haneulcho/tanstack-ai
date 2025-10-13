@@ -22,6 +22,16 @@ type ExtractModels<T> = T extends AIAdapter<infer M, any> ? M[number] : string;
 // Extract image model type from an adapter
 type ExtractImageModels<T> = T extends AIAdapter<any, infer M> ? M[number] : string;
 
+// Extract provider options type from adapter name
+// This will be extended with actual adapter-specific types via module augmentation
+export interface ProviderOptionsMap { }
+
+// Helper to get provider options for a specific adapter
+type GetProviderOptions<TAdapterName extends string> =
+  TAdapterName extends keyof ProviderOptionsMap
+  ? { [K in TAdapterName]?: ProviderOptionsMap[K] }
+  : { [K in TAdapterName]?: Record<string, any> };
+
 // Type for a single fallback configuration (discriminated union)
 type AdapterFallback<TAdapters extends AdapterMap> = {
   [K in keyof TAdapters & string]: {
@@ -72,7 +82,7 @@ interface AIConfig<T extends AdapterMap, TTools extends ToolRegistry = ToolRegis
 
 // Create discriminated union for adapter options with model constraint
 type ChatOptionsWithAdapter<TAdapters extends AdapterMap, TTools extends ToolRegistry = ToolRegistry> = {
-  [K in keyof TAdapters & string]: Omit<ChatCompletionOptions, "model" | "tools"> & {
+  [K in keyof TAdapters & string]: Omit<ChatCompletionOptions, "model" | "tools" | "providerOptions"> & {
     adapter: K;
     model: ExtractModels<TAdapters[K]>;
     /**
@@ -97,6 +107,11 @@ type ChatOptionsWithAdapter<TAdapters extends AdapterMap, TTools extends ToolReg
      * Overrides the default system prompts from constructor if provided.
      */
     systemPrompts?: string[];
+    /**
+     * Provider-specific options. Type-safe based on the selected adapter.
+     * For example: { openai: { reasoningSummary: 'detailed' } }
+     */
+    providerOptions?: GetProviderOptions<K>;
   };
 }[keyof TAdapters & string];
 
@@ -130,13 +145,17 @@ type ChatOptionsWithFallback<TAdapters extends AdapterMap, TTools extends ToolRe
 };
 
 type TextGenerationOptionsWithAdapter<TAdapters extends AdapterMap> = {
-  [K in keyof TAdapters & string]: Omit<TextGenerationOptions, "model"> & {
+  [K in keyof TAdapters & string]: Omit<TextGenerationOptions, "model" | "providerOptions"> & {
     adapter: K;
     model: ExtractModels<TAdapters[K]>;
     /**
      * Optional fallbacks to try if the primary adapter fails.
      */
     fallbacks?: ReadonlyArray<AdapterFallback<TAdapters>>;
+    /**
+     * Provider-specific options. Type-safe based on the selected adapter.
+     */
+    providerOptions?: GetProviderOptions<K>;
   };
 }[keyof TAdapters & string];
 
@@ -197,13 +216,17 @@ type ImageGenerationOptionsWithAdapter<TAdapters extends AdapterMap> = {
   ? ImageModels extends readonly string[]
   ? ImageModels['length'] extends 0
   ? never
-  : Omit<ImageGenerationOptions, "model"> & {
+  : Omit<ImageGenerationOptions, "model" | "providerOptions"> & {
     adapter: K;
     model: ExtractImageModels<TAdapters[K]>;
     /**
      * Optional fallbacks to try if the primary adapter fails.
      */
     fallbacks?: ReadonlyArray<ImageAdapterFallback<TAdapters>>;
+    /**
+     * Provider-specific options. Type-safe based on the selected adapter.
+     */
+    providerOptions?: GetProviderOptions<K>;
   }
   : never
   : never;

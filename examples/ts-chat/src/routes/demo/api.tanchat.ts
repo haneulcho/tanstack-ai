@@ -78,13 +78,18 @@ const ai = new AI({
 });
 
 export const Route = createFileRoute("/demo/api/tanchat")({
+  loader: async () => {
+    return {
+      message: "TanChat API Route with Provider Options",
+    };
+  },
   server: {
     handlers: {
       POST: async ({ request }) => {
         const { messages } = await request.json();
 
+        // Example: Using OpenAI with provider-specific options
         // System prompts are automatically prepended from constructor
-        // No need to manually add system messages anymore!
         return ai.chat({
           model: "gpt-4o",
           adapter: "openAi",
@@ -100,6 +105,27 @@ export const Route = createFileRoute("/demo/api/tanchat")({
           tools: ["getGuitars", "recommendGuitar"],
           toolChoice: "auto",
           maxIterations: 5,
+          // ✅ Provider-specific options (use adapter's internal name, e.g., "openai" not "openAi")
+          // Note: TypeScript will provide autocomplete based on the adapter type
+          providerOptions: {
+            openai: {
+              // Control response verbosity
+              textVerbosity: "medium", // 'low' | 'medium' | 'high'
+
+              // Store generation for distillation
+              store: true,
+              metadata: {
+                session: "guitar-chat",
+                timestamp: new Date().toISOString(),
+              },
+
+              // User identifier for monitoring
+              user: "guitar-store-user",
+
+              // Parallel tool calling
+              parallelToolCalls: false, // Execute tools one at a time for this example
+            },
+          },
         });
       },
     },

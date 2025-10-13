@@ -46,6 +46,8 @@ export interface ChatCompletionOptions {
   | { type: "function"; function: { name: string } };
   maxIterations?: number; // For automatic tool execution (default: 5)
   metadata?: Record<string, any>;
+  /** Provider-specific options (e.g., { openai: OpenAIProviderOptions }) */
+  providerOptions?: Record<string, any>;
 }
 
 export type StreamChunkType = "content" | "tool_call" | "done" | "error";
@@ -139,6 +141,8 @@ export interface TextGenerationOptions {
   presencePenalty?: number;
   stopSequences?: string[];
   stream?: boolean;
+  /** Provider-specific options (e.g., { openai: OpenAIProviderOptions }) */
+  providerOptions?: Record<string, any>;
 }
 
 export interface TextGenerationResult {

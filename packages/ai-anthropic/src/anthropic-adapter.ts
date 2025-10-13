@@ -15,6 +15,13 @@ import {
   type StreamChunk,
 } from "@tanstack/ai";
 
+// Augment the ProviderOptionsMap to add Anthropic-specific options
+declare module "@tanstack/ai" {
+  interface ProviderOptionsMap {
+    anthropic: AnthropicProviderOptions;
+  }
+}
+
 export interface AnthropicAdapterConfig extends AIAdapterConfig {
   apiKey: string;
 }
@@ -33,6 +40,26 @@ const ANTHROPIC_MODELS = [
 const ANTHROPIC_IMAGE_MODELS = [] as const;
 
 export type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
+
+/**
+ * Anthropic-specific provider options
+ * @see https://ai-sdk.dev/providers/ai-sdk-providers/anthropic
+ */
+export interface AnthropicProviderOptions {
+  /** Enable reasoning with budget tokens */
+  thinking?: {
+    type: 'enabled';
+    budgetTokens: number;
+  };
+  /** Cache control for prompt caching */
+  cacheControl?: {
+    type: 'ephemeral';
+    /** Cache TTL: '5m' (default) | '1h' */
+    ttl?: '5m' | '1h';
+  };
+  /** Include reasoning content in requests. Defaults to true */
+  sendReasoning?: boolean;
+}
 
 export class AnthropicAdapter extends BaseAdapter<
   typeof ANTHROPIC_MODELS,
@@ -57,6 +84,7 @@ export class AnthropicAdapter extends BaseAdapter<
   async chatCompletion(
     options: ChatCompletionOptions
   ): Promise<ChatCompletionResult> {
+    const providerOpts = options.providerOptions?.anthropic as AnthropicProviderOptions | undefined;
     const { systemMessage, messages } = this.formatMessages(options.messages);
 
     const requestParams: any = {
@@ -69,6 +97,14 @@ export class AnthropicAdapter extends BaseAdapter<
       stop_sequences: options.stopSequences,
       stream: false,
     };
+
+    // Apply Anthropic-specific provider options
+    if (providerOpts) {
+      if (providerOpts.thinking) {
+        requestParams.thinking = providerOpts.thinking;
+      }
+      // Note: cacheControl and sendReasoning are applied at the message/tool level
+    }
 
     // Add tools if provided
     if (options.tools && options.tools.length > 0) {
@@ -164,6 +200,7 @@ export class AnthropicAdapter extends BaseAdapter<
   async *chatStream(
     options: ChatCompletionOptions
   ): AsyncIterable<StreamChunk> {
+    const providerOpts = options.providerOptions?.anthropic as AnthropicProviderOptions | undefined;
     const { systemMessage, messages } = this.formatMessages(options.messages);
 
     const requestParams: any = {
@@ -176,6 +213,13 @@ export class AnthropicAdapter extends BaseAdapter<
       stop_sequences: options.stopSequences,
       stream: true,
     };
+
+    // Apply Anthropic-specific provider options
+    if (providerOpts) {
+      if (providerOpts.thinking) {
+        requestParams.thinking = providerOpts.thinking;
+      }
+    }
 
     // Add tools if provided
     if (options.tools && options.tools.length > 0) {

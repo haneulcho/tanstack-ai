@@ -16,6 +16,13 @@ import {
   type ImageData,
 } from "@tanstack/ai";
 
+// Augment the ProviderOptionsMap to add OpenAI-specific options
+declare module "@tanstack/ai" {
+  interface ProviderOptionsMap {
+    openai: OpenAIProviderOptions;
+  }
+}
+
 export interface OpenAIAdapterConfig extends AIAdapterConfig {
   apiKey: string;
   organization?: string;
@@ -44,6 +51,70 @@ const OPENAI_IMAGE_MODELS = [
 export type OpenAIModel = (typeof OPENAI_MODELS)[number];
 export type OpenAIImageModel = (typeof OPENAI_IMAGE_MODELS)[number];
 
+/**
+ * OpenAI-specific provider options for chat/text generation
+ * @see https://ai-sdk.dev/providers/ai-sdk-providers/openai
+ */
+export interface OpenAIProviderOptions {
+  /** Whether to use parallel tool calls. Defaults to true */
+  parallelToolCalls?: boolean;
+  /** Whether to store the generation. Defaults to true */
+  store?: boolean;
+  /** Maximum number of total calls to built-in tools */
+  maxToolCalls?: number;
+  /** Additional metadata to store with the generation */
+  metadata?: Record<string, string>;
+  /** ID of previous response to continue conversation */
+  previousResponseId?: string;
+  /** Instructions for continuing a conversation */
+  instructions?: string;
+  /** Unique identifier for end-user (for abuse monitoring) */
+  user?: string;
+  /** Reasoning effort for reasoning models: 'minimal' | 'low' | 'medium' | 'high' */
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
+  /** Controls reasoning summaries: 'auto' | 'detailed' */
+  reasoningSummary?: 'auto' | 'detailed';
+  /** Whether to use strict JSON schema validation */
+  strictJsonSchema?: boolean;
+  /** Service tier: 'auto' | 'flex' | 'priority' | 'default' */
+  serviceTier?: 'auto' | 'flex' | 'priority' | 'default';
+  /** Controls response verbosity: 'low' | 'medium' | 'high' */
+  textVerbosity?: 'low' | 'medium' | 'high';
+  /** Additional content to include in response */
+  include?: string[];
+  /** Cache key for manual prompt caching control */
+  promptCacheKey?: string;
+  /** Stable identifier for usage policy violation detection */
+  safetyIdentifier?: string;
+  /** Modifies likelihood of specific tokens appearing */
+  logitBias?: Record<number, number>;
+  /** Return log probabilities (boolean or number for top n) */
+  logprobs?: boolean | number;
+  /** Parameters for prediction mode */
+  prediction?: {
+    type: 'content';
+    content: string;
+  };
+  /** Whether to use structured outputs (for chat models) */
+  structuredOutputs?: boolean;
+  /** Maximum number of completion tokens (for reasoning models) */
+  maxCompletionTokens?: number;
+  /** Image detail level: 'high' | 'low' | 'auto' (for images in messages) */
+  imageDetail?: 'high' | 'low' | 'auto';
+}
+
+/**
+ * OpenAI-specific provider options for image generation
+ */
+export interface OpenAIImageProviderOptions {
+  /** Image quality: 'standard' | 'hd' (dall-e-3 only) */
+  quality?: 'standard' | 'hd';
+  /** Image style: 'natural' | 'vivid' (dall-e-3 only) */
+  style?: 'natural' | 'vivid';
+  /** Seed for reproducibility (dall-e-3 only) */
+  seed?: number;
+}
+
 export class OpenAIAdapter extends BaseAdapter<typeof OPENAI_MODELS, typeof OPENAI_IMAGE_MODELS> {
   name = "openai";
   models = OPENAI_MODELS;
@@ -65,6 +136,8 @@ export class OpenAIAdapter extends BaseAdapter<typeof OPENAI_MODELS, typeof OPEN
   async chatCompletion(
     options: ChatCompletionOptions
   ): Promise<ChatCompletionResult> {
+    const providerOpts = options.providerOptions?.openai as OpenAIProviderOptions | undefined;
+
     const requestParams: any = {
       model: options.model || "gpt-3.5-turbo",
       messages: options.messages.map((msg) => {
@@ -100,6 +173,51 @@ export class OpenAIAdapter extends BaseAdapter<typeof OPENAI_MODELS, typeof OPEN
       stop: options.stopSequences,
       stream: false,
     };
+
+    // Apply OpenAI-specific provider options
+    if (providerOpts) {
+      if (providerOpts.parallelToolCalls !== undefined) {
+        requestParams.parallel_tool_calls = providerOpts.parallelToolCalls;
+      }
+      if (providerOpts.store !== undefined) {
+        requestParams.store = providerOpts.store;
+      }
+      if (providerOpts.metadata) {
+        requestParams.metadata = providerOpts.metadata;
+      }
+      if (providerOpts.user) {
+        requestParams.user = providerOpts.user;
+      }
+      if (providerOpts.logitBias) {
+        requestParams.logit_bias = providerOpts.logitBias;
+      }
+      if (providerOpts.logprobs !== undefined) {
+        if (typeof providerOpts.logprobs === 'boolean') {
+          requestParams.logprobs = providerOpts.logprobs;
+        } else {
+          requestParams.logprobs = true;
+          requestParams.top_logprobs = providerOpts.logprobs;
+        }
+      }
+      if (providerOpts.reasoningEffort) {
+        requestParams.reasoning_effort = providerOpts.reasoningEffort;
+      }
+      if (providerOpts.reasoningSummary) {
+        requestParams.reasoning_summary = providerOpts.reasoningSummary;
+      }
+      if (providerOpts.serviceTier) {
+        requestParams.service_tier = providerOpts.serviceTier;
+      }
+      if (providerOpts.textVerbosity) {
+        requestParams.text_verbosity = providerOpts.textVerbosity;
+      }
+      if (providerOpts.prediction) {
+        requestParams.prediction = providerOpts.prediction;
+      }
+      if (providerOpts.maxCompletionTokens) {
+        requestParams.max_completion_tokens = providerOpts.maxCompletionTokens;
+      }
+    }
 
     // Only add tools if they exist
     if (options.tools && options.tools.length > 0) {
@@ -189,6 +307,8 @@ export class OpenAIAdapter extends BaseAdapter<typeof OPENAI_MODELS, typeof OPEN
   async *chatStream(
     options: ChatCompletionOptions
   ): AsyncIterable<import("@tanstack/ai").StreamChunk> {
+    const providerOpts = options.providerOptions?.openai as OpenAIProviderOptions | undefined;
+
     // Debug: Log incoming options
     if (process.env.DEBUG_TOOLS) {
       console.error(
@@ -238,6 +358,51 @@ export class OpenAIAdapter extends BaseAdapter<typeof OPENAI_MODELS, typeof OPEN
       stop: options.stopSequences,
       stream: true,
     };
+
+    // Apply OpenAI-specific provider options
+    if (providerOpts) {
+      if (providerOpts.parallelToolCalls !== undefined) {
+        requestParams.parallel_tool_calls = providerOpts.parallelToolCalls;
+      }
+      if (providerOpts.store !== undefined) {
+        requestParams.store = providerOpts.store;
+      }
+      if (providerOpts.metadata) {
+        requestParams.metadata = providerOpts.metadata;
+      }
+      if (providerOpts.user) {
+        requestParams.user = providerOpts.user;
+      }
+      if (providerOpts.logitBias) {
+        requestParams.logit_bias = providerOpts.logitBias;
+      }
+      if (providerOpts.logprobs !== undefined) {
+        if (typeof providerOpts.logprobs === 'boolean') {
+          requestParams.logprobs = providerOpts.logprobs;
+        } else {
+          requestParams.logprobs = true;
+          requestParams.top_logprobs = providerOpts.logprobs;
+        }
+      }
+      if (providerOpts.reasoningEffort) {
+        requestParams.reasoning_effort = providerOpts.reasoningEffort;
+      }
+      if (providerOpts.reasoningSummary) {
+        requestParams.reasoning_summary = providerOpts.reasoningSummary;
+      }
+      if (providerOpts.serviceTier) {
+        requestParams.service_tier = providerOpts.serviceTier;
+      }
+      if (providerOpts.textVerbosity) {
+        requestParams.text_verbosity = providerOpts.textVerbosity;
+      }
+      if (providerOpts.prediction) {
+        requestParams.prediction = providerOpts.prediction;
+      }
+      if (providerOpts.maxCompletionTokens) {
+        requestParams.max_completion_tokens = providerOpts.maxCompletionTokens;
+      }
+    }
 
     // Only add tools if they exist
     if (options.tools && options.tools.length > 0) {
